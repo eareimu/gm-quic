@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use rand::Rng;
+use tracing::trace;
 
 use super::{Bbr, BbrStateMachine, HIGH_GAIN, PROBE_RTT_DURATION};
 use crate::rtt::INITIAL_RTT;
@@ -48,6 +49,12 @@ impl Bbr {
             return;
         }
 
+        trace!(
+            "check_full_pipe, btlbw={}, full_bw={}, full_bw_count={}",
+            self.btlbw,
+            self.full_bw,
+            self.full_bw_count
+        );
         // BBR.BtlBw still growing?
         if self.btlbw as f64 >= self.full_bw as f64 * 1.25 {
             // record new baseline level
@@ -63,6 +70,7 @@ impl Bbr {
 
     // 4.3.3.  Drain
     fn enter_drain(&mut self) {
+        trace!("enter_drain");
         self.state = BbrStateMachine::Drain;
         self.pacing_gain = 1.0 / HIGH_GAIN; // pace slowly
         self.cwnd_gain = HIGH_GAIN; // maintain cwnd
@@ -79,6 +87,7 @@ impl Bbr {
 
     // 4.3.4.  ProbeBW
     pub fn enter_probe_bw(&mut self) {
+        trace!("enter_probe_bw");
         self.state = BbrStateMachine::ProbeBW;
         self.pacing_gain = 1.0;
         self.cwnd_gain = 2.0;
@@ -97,6 +106,7 @@ impl Bbr {
     }
 
     fn advance_cycle_phase(&mut self) {
+        trace!("advance_cycle_phase: cycle_index={}", self.cycle_index);
         self.cycle_stamp = Instant::now();
         self.cycle_index = (self.cycle_index + 1) % GAIN_CYCLE_LEN;
         self.pacing_gain = PACING_GAIN_CYCLE[self.cycle_index];
@@ -195,7 +205,10 @@ mod tests {
 
     use std::time::{Duration, Instant};
 
-    use crate::bbr::{tests::simulate_round_trip, BbrStateMachine, HIGH_GAIN, INITIAL_CWND, MSS};
+    use crate::bbr::{
+        tests::{simulate_ack, simulate_send},
+        BbrStateMachine, HIGH_GAIN, INITIAL_CWND, MSS,
+    };
 
     #[test]
     fn test_bbr_init() {
@@ -220,27 +233,46 @@ mod tests {
     fn test_bbr_check_full_pipe() {
         let mut bbr = super::Bbr::new();
 
-        let mut now = Instant::now();
+        let send_time1 = Instant::now();
         let rtt = Duration::from_millis(100);
-        simulate_round_trip(&mut bbr, now, rtt, 0, 10, MSS);
-        now += Duration::from_secs(1);
-        simulate_round_trip(&mut bbr, now, rtt, 0, 10, MSS);
 
-        assert_eq!(bbr.btlbw, (10 * 10 * MSS) as u64);
-        bbr.check_full_pipe();
+        let send1 = simulate_send(&mut bbr, send_time1, 0, 90, MSS);
+        assert!(!bbr.is_filled_pipe);
+        // generate rate sample
+        simulate_ack(&mut bbr, send_time1, rtt, send1);
+        // pacing rate * 2.98
+        let send_time2 = send_time1 + Duration::from_millis(10);
+        let send2 = simulate_send(&mut bbr, send_time1 + rtt, 90, 350, MSS);
+        assert_eq!(send2.len(), 350 - 90);
+        simulate_ack(&mut bbr, send_time2, rtt, send2);
+        assert_eq!(bbr.btlbw, 90 * 10 * MSS as u64);
         assert!(!bbr.is_filled_pipe);
 
-        now += Duration::from_secs(1);
-        simulate_round_trip(&mut bbr, now, rtt, 0, 10, MSS);
-        assert_eq!(bbr.btlbw, (10 * 10 * MSS) as u64);
-
-        bbr.check_full_pipe();
+        let send_time3 = send_time2 + Duration::from_millis(10);
+        let send3 = simulate_send(&mut bbr, send_time3, 350, 600, MSS);
+        let rtt = Duration::from_millis(500);
+        simulate_ack(&mut bbr, send_time3, rtt, send3);
         assert!(!bbr.is_filled_pipe);
+        assert_eq!(
+            bbr.delivery_rate.sample_delivery_rate(),
+            250 * 2 * MSS as u64
+        );
 
-        now += Duration::from_secs(1);
-        simulate_round_trip(&mut bbr, now, rtt, 0, 10, MSS);
+        let send_time4 = send_time3 + Duration::from_millis(10);
+        let send4 = simulate_send(&mut bbr, send_time4, 600, 850, MSS);
+        simulate_ack(&mut bbr, send_time4, rtt, send4);
+        assert_eq!(
+            bbr.delivery_rate.sample_delivery_rate(),
+            250 * 2 * MSS as u64
+        );
 
-        bbr.check_full_pipe();
+        let send_time5 = send_time4 + Duration::from_millis(10);
+        let send5 = simulate_send(&mut bbr, send_time5, 850, 1000, MSS);
+        simulate_ack(&mut bbr, send_time5, rtt, send5);
+        assert_eq!(
+            bbr.delivery_rate.sample_delivery_rate(),
+            150 * 2 * MSS as u64
+        );
         assert!(bbr.is_filled_pipe);
     }
 

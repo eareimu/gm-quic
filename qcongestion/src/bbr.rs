@@ -190,15 +190,14 @@ impl Bbr {
 
 impl Algorithm for Bbr {
     fn on_sent(&mut self, sent: &mut SentPkt, _: usize, _: Instant) {
-        self.bytes_in_flight += sent.size as u64;
         self.delivery_rate
-            .update_app_limited(self.bytes_in_flight < self.cwnd);
+            .update_app_limited((self.bytes_in_flight + sent.size as u64) < self.cwnd);
         self.delivery_rate.on_packet_sent(
             sent,
             self.bytes_in_flight as usize,
             self.bytes_lost_in_total,
         );
-
+        self.bytes_in_flight += sent.size as u64;
         self.on_transmit();
     }
 
@@ -360,6 +359,86 @@ mod tests {
         );
         assert_eq!(bbr.btlbw, (3 * 10 * 10 * MSS) as u64);
         assert_eq!(bbr.pacing_rate, (bbr.btlbw as f64 * bbr.pacing_gain) as u64);
+    }
+
+    #[test]
+    fn test_app_limited() {
+        let mut bbr = super::Bbr::new();
+        let send_time1 = Instant::now();
+        let rtt = Duration::from_millis(100);
+
+        let send1 = simulate_send(&mut bbr, send_time1, 0, 10, MSS);
+        assert_eq!(bbr.bytes_in_flight, 10 * MSS as u64);
+        assert!(send1[0].is_app_limited);
+
+        let send_time2 = send_time1 + Duration::from_millis(10);
+        let mut send2 = simulate_send(&mut bbr, send_time2, 10, 80, MSS);
+        assert_eq!(bbr.bytes_in_flight, 80 * MSS as u64);
+        assert!(send2[0].is_app_limited);
+
+        // default cwnd 80 * MSS
+        let send_time3 = send_time2 + Duration::from_millis(10);
+        let send3 = simulate_send(&mut bbr, send_time3, 80, 100, MSS);
+        assert_eq!(bbr.bytes_in_flight, 100 * MSS as u64);
+        assert!(!send3[0].is_app_limited);
+
+        // update delivery rate
+        simulate_ack(&mut bbr, send_time1, rtt, send1);
+        assert_eq!(bbr.delivery_rate.delivered(), 10 * MSS);
+        assert_eq!(
+            bbr.delivery_rate.sample_delivery_rate(),
+            (10 * 10 * MSS) as u64
+        );
+
+        // loss pn 79
+        let loss = send2.pop();
+        simulate_ack(&mut bbr, send_time2, rtt, send2);
+        assert_eq!(bbr.bytes_in_flight, 21 * MSS as u64);
+        assert_eq!(bbr.delivery_rate.delivered(), 79 * MSS);
+        bbr.on_congestion_event(&loss.unwrap(), send_time1);
+        // loss 减少 inflight
+        assert_eq!(bbr.bytes_in_flight, 20 * MSS as u64);
+        assert_eq!(
+            bbr.delivery_rate.sample_delivery_rate(),
+            79 * 10 * MSS as u64
+        )
+    }
+
+    pub(super) fn simulate_send(
+        bbr: &mut super::Bbr,
+        start_time: Instant,
+        start: usize,
+        end: usize,
+        packet_size: usize,
+    ) -> Vec<SentPkt> {
+        let mut sent_packets = Vec::new();
+        for i in start..end {
+            let mut sent: SentPkt = SentPkt {
+                pn: i as u64,
+                size: packet_size,
+                time_sent: start_time,
+                ..Default::default()
+            };
+            bbr.on_sent(&mut sent, packet_size, start_time);
+            sent_packets.push(sent.clone());
+        }
+        sent_packets
+    }
+
+    pub(super) fn simulate_ack(
+        bbr: &mut super::Bbr,
+        start_time: Instant,
+        rtt: Duration,
+        sent: Vec<SentPkt>,
+    ) {
+        let mut acks: Vec<AckedPkt> = Vec::new();
+        for sent_pkt in sent {
+            let mut ack: AckedPkt = sent_pkt.into();
+            ack.rtt = rtt;
+            acks.push(ack);
+        }
+        let ack_time = start_time + rtt;
+        bbr.on_ack(acks.into(), ack_time);
     }
 
     pub(super) fn simulate_round_trip(

@@ -78,6 +78,11 @@ impl Rate {
     }
 
     pub fn generate_rate_sample(&mut self) {
+        // End app-limited phase if bubble is ACKed and gone.
+        if self.app_limited() && self.largest_acked > self.end_of_app_limited {
+            self.update_app_limited(false);
+        }
+
         if self.rate_sample.prior_time.is_some() {
             let interval = self
                 .rate_sample
@@ -103,7 +108,11 @@ impl Rate {
     }
 
     pub fn update_app_limited(&mut self, is_limited: bool) {
-        self.end_of_app_limited = if is_limited { self.last_sent_packet } else { 0 }
+        self.end_of_app_limited = if is_limited {
+            self.last_sent_packet.max(1)
+        } else {
+            0
+        }
     }
 
     pub fn app_limited(&mut self) -> bool {
