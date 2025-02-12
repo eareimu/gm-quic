@@ -103,9 +103,10 @@ impl Io for UdpSocketController {
         let io = socket2::SockRef::from(&self.io);
 
         let gso_size = if send_hdr.gso {
-            let max_gso = self.max_gso_segments();
-            let max_payloads = u16::MAX / send_hdr.seg_size;
-            cmp::min(max_gso, max_payloads)
+            self.max_gso_segments()
+            // let max_payloads = u16::MAX / send_hdr.seg_size;
+            // // tracing::info!("max gso: {}, max payloads: {}", max_gso, max_payloads);
+            // cmp::min(max_gso, max_payloads)
         } else {
             1
         };
@@ -182,6 +183,8 @@ pub(super) fn sendmmsg(
     gso_size: u16,
 ) -> io::Result<usize> {
     use std::iter;
+
+    use tracing::info;
     let mut iovecs: Vec<Vec<IoSlice>> = iter::repeat_with(|| Vec::with_capacity(gso_size as usize))
         .take(BATCH_SIZE)
         .collect();
@@ -190,13 +193,16 @@ pub(super) fn sendmmsg(
     message.prepare_sent(send_hdr, dst, gso_size, BATCH_SIZE);
 
     let mut sent_packets = 0;
+    info!("send buf size {}", bufs.len());
     for batch in bufs.chunks(gso_size as usize * BATCH_SIZE) {
         let mut mmsg_batch_size: usize = 0;
+        let mut packet_count = 0;
         for (i, gso_batch) in batch.chunks(gso_size as usize).enumerate() {
             mmsg_batch_size += 1;
             let hdr = &mut message.hdrs[i].msg_hdr;
             let iovec = &mut iovecs[i];
             iovec.clear();
+            packet_count += gso_batch.len();
             iovec.extend(gso_batch.iter().map(|payload| IoSlice::new(payload)));
             hdr.msg_iov = iovec.as_ptr() as *mut _;
             hdr.msg_iovlen = iovec.len() as _;
@@ -208,12 +214,13 @@ pub(super) fn sendmmsg(
             let ret =
                 to_result(unsafe { libc::sendmmsg(io.as_raw_fd(), msgvec, vlen, 0) } as isize);
 
+            // log::info!("sendmmsg ret: {:?}", ret);
             match ret {
                 // On success, sendmmsg() returns the number of messages sent from
                 // msgvec; if this is less than vlen, the caller can retry with a
                 // further sendmmsg() call to send the remaining messages.
                 Ok(n) => {
-                    sent_packets += n;
+                    sent_packets += packet_count;
                     if n != vlen as usize {
                         log::warn!("sendmmsg : only {} messages sent out of {}", n, vlen);
                         vlen = n as u32 - vlen;
@@ -222,13 +229,18 @@ pub(super) fn sendmmsg(
                     }
                     break;
                 }
-                Err(e) => match e.raw_os_error() {
-                    Some(libc::EINTR) => continue,
-                    Some(libc::EWOULDBLOCK) if sent_packets > 0 => return Ok(sent_packets),
-                    Some(libc::EWOULDBLOCK) if sent_packets == 0 => return Err(e),
-                    Some(libc::EBADE) | Some(libc::EPIPE) | Some(libc::ENOTCONN) => return Err(e),
-                    _ => break,
-                },
+                Err(e) => {
+                    log::info!("sendmmsg error: {}", e);
+                    match e.raw_os_error() {
+                        Some(libc::EINTR) => continue,
+                        Some(libc::EWOULDBLOCK) if sent_packets > 0 => return Ok(sent_packets),
+                        Some(libc::EWOULDBLOCK) if sent_packets == 0 => return Err(e),
+                        Some(libc::EBADE) | Some(libc::EPIPE) | Some(libc::ENOTCONN) => {
+                            return Err(e)
+                        }
+                        _ => break,
+                    }
+                }
             }
         }
     }
@@ -352,7 +364,9 @@ static GSO_GRO_SIZE: std::sync::LazyLock<(u16, u16)> = std::sync::LazyLock::new(
 #[cfg(target_os = "linux")]
 impl Gso for UdpSocketController {
     fn max_gso_segments(&self) -> u16 {
-        GSO_GRO_SIZE.0
+        let max_payloads = u16::MAX / 1200;
+        // tracing::info!("max gso: {}, max payloads: {}", max_gso, max_payloads);
+        cmp::min(max_payloads, GSO_GRO_SIZE.0)
     }
 
     fn set_segment_size(cmsg: &mut CmsgHdr<libc::msghdr>, segment_size: u16) {

@@ -169,6 +169,9 @@ impl Message {
                     (libc::IPPROTO_IP, libc::IP_RECVTTL) => unsafe {
                         recv_hdr.ttl = decode::<u32, libc::cmsghdr>(cmsg) as u8;
                     },
+                    (libc::IPPROTO_IPV6, 52) => unsafe {
+                        //ingnor IPV6_RECVHOPLIMIT
+                    },
                     _ => {
                         log::trace!(
                             "read unkown level {} cmsg {}",

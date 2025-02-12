@@ -64,6 +64,7 @@ use space::Spaces;
 use termination::Termination;
 use tls::ArcTlsSession;
 use tokio::{io::AsyncWrite, sync::Notify};
+use tracing::info;
 
 #[derive(Clone, Deref)]
 pub struct ArcReliableFrameDeque {
@@ -288,6 +289,7 @@ impl Connection {
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn close(&self, reason: Cow<'static, str>, code: u64) {
         let error_code = code.try_into().unwrap();
+        info!("close connection: {} {} ", error_code, reason);
         self.enter_closing(ConnectionCloseFrame::new_app(error_code, reason));
     }
 
@@ -352,7 +354,9 @@ impl Connection {
 }
 
 impl Drop for Connection {
+    #[tracing::instrument(level = "info", skip(self), ret)]
     fn drop(&mut self) {
+        info!("drop connection {:p}", self);
         let state = self.0.read().unwrap();
         assert!(state.is_err(), "Connection must be closed before drop");
     }

@@ -176,7 +176,7 @@ impl Burst {
             let buffers = self.load_into_buffers(buffers, transcation)?;
             let segments = self.collect_filled_buffers(buffers)?;
             if !segments.is_empty() {
-                tracing::trace!(
+                tracing::info!(
                     packets = ?segments.iter().map(|seg| seg.len()).collect::<Vec<_>>(),
                     "send packets"
                 );

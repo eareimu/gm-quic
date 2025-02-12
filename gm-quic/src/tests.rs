@@ -16,7 +16,7 @@ fn client_stream_unlimited_parameters() -> crate::ClientParameters {
     params
 }
 
-use std::{io, sync::Arc};
+use std::{io, panic, process, sync::Arc};
 
 use echo_server::server_stream_unlimited_parameters;
 use rustls::RootCertStore;
@@ -30,6 +30,13 @@ use crate::ToCertificate;
 
 #[tokio::test]
 async fn parallel_stream() -> io::Result<()> {
+    let orig_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        // invoke the default handler and exit the process
+        info!("{}", panic_info);
+        orig_hook(panic_info);
+        process::exit(1);
+    }));
     tracing_subscriber::fmt()
         .with_max_level(tracing::level_filters::LevelFilter::INFO)
         // .with_max_level(tracing::level_filters::LevelFilter::TRACE)
@@ -40,7 +47,7 @@ async fn parallel_stream() -> io::Result<()> {
         //         .truncate(true)
         //         .open("/tmp/gm-quic.log")?,
         // )
-        // .with_ansi(false)
+        .with_ansi(false)
         .init();
 
     let server = crate::QuicServer::builder()
@@ -70,8 +77,8 @@ async fn parallel_stream() -> io::Result<()> {
     );
 
     const CONNECTIONS: usize = 1;
-    const STREAMS: usize = 16;
-    const DATA: &[u8] = include_bytes!("tests.rs");
+    const STREAMS: usize = 1;
+    const DATA: &[u8] = include_bytes!("./日志7.log");
 
     let mut connections = JoinSet::new();
 
@@ -83,7 +90,7 @@ async fn parallel_stream() -> io::Result<()> {
                 async move {
                     let (stream_id, (mut reader, mut writer)) =
                         connection.open_bi_stream().await?.unwrap();
-                    debug!(%stream_id, "opened stream");
+                    info!(%stream_id, "opened stream {:p}", connection);
 
                     writer.write_all(DATA).await?;
                     writer.shutdown().await?;
@@ -113,7 +120,12 @@ async fn parallel_stream() -> io::Result<()> {
             let client = client.clone();
             async move {
                 let connection = client.connect("localhost", server_addr)?;
-                for_eacho_connection(connection).await
+                info!("client connection {:p}", connection);
+                for_eacho_connection(connection.clone())
+                    .await
+                    .inspect_err(|error| tracing::error!(?error))?;
+                connection.close("bye".into(), 0);
+                Ok(())
             }
             .instrument(info_span!("connection", conn_idx))
         });

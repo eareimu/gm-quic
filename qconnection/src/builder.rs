@@ -31,7 +31,7 @@ use qinterface::{
 };
 pub use rustls::crypto::CryptoProvider;
 use tokio::sync::Notify;
-use tracing::{trace_span, Instrument};
+use tracing::{info, trace_span, Instrument};
 
 use crate::{
     events::{ArcEventBroker, EmitEvent, Event},
@@ -498,7 +498,10 @@ impl Components {
                         let reason = tokio::select! {
                             false = validate => "failed to validate",
                             _ = idle_timeout => "idle timeout",
-                            _ = burst.launch() => "failed to send packets",
+                            err = burst.launch() => {
+                                info!("burst task failed: {:?}", err);
+                                "burst task failed"
+                            },
                             _ = path.defer_idle_timeout(defer_idle_timeout) => "failed to defer idle timeout ",
                         };
                         tracing::trace!(reason, "path inactive");

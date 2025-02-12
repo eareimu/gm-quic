@@ -13,7 +13,7 @@ use qbase::{
     Epoch,
 };
 use tokio::{sync::Notify, task::AbortHandle};
-use tracing::{trace_span, Instrument};
+use tracing::{info, trace_span, Instrument};
 
 // todo: remove this in future
 impl<T> ObserveHandshake for Handshake<T>
@@ -134,6 +134,13 @@ impl CongestionController {
         sent_bytes: usize,
         now: Instant,
     ) {
+        // info!(
+        //     "{} send packet pn {}, size {} send quota {}",
+        //     self.handshake.role(),
+        //     pn,
+        //     sent_bytes,
+        //     self.send_quota(now),
+        // );
         let mut sent = SentPkt::new(pn, sent_bytes, now);
         if in_flight {
             if ack_eliciting {
@@ -192,6 +199,11 @@ impl CongestionController {
         if !lost_packets.is_empty() {
             self.on_packets_lost(lost_packets.into_iter(), space);
         }
+        // info!(
+        //     " {:?} recv ack frame {:?}",
+        //     self.handshake.role(),
+        //     ack_frame
+        // );
         self.algorithm.on_ack(newly_acked_packets, now);
 
         if self.server_completed_address_validation() {
@@ -200,7 +212,6 @@ impl CongestionController {
         self.set_loss_timer();
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn get_newly_acked_packets(
         &mut self,
         epoch: Epoch,
@@ -292,7 +303,7 @@ impl CongestionController {
             };
 
         self.pto_count += 1;
-        tracing::trace!(
+        tracing::info!(
             role = %self.handshake.role(),
             ?pto_epoch,
             pto_count = self.pto_count,
@@ -397,7 +408,7 @@ impl CongestionController {
             {
                 if let Some(loss) = self.sent_packets[space].remove(i) {
                     let pn = loss.pn;
-                    tracing::trace!(
+                    tracing::info!(
                         "conection packet {} loss time {} packet threshold {}",
                         pn,
                         self.sent_packets[space][i].time_sent <= lost_send_time,
@@ -489,9 +500,24 @@ impl super::CongestionControl for ArcCC {
                 let mut interval = tokio::time::interval(Duration::from_millis(10));
                 let mut count = 0;
                 loop {
+                    count += 1;
                     interval.tick().await;
                     let now = Instant::now();
                     let mut guard = cc.0.lock().unwrap();
+                    if count % 100 == 0 {
+                        tracing::info!(
+                            "{} cc loop count {} requires_ack {}",
+                            guard.handshake.role(),
+                            count,
+                            guard.requires_ack()
+                        );
+
+                        info!(
+                            "recv record {:?} last ack sent {:?}",
+                            guard.rcvd_records[Epoch::Data].rcvd_queue.back(),
+                            guard.rcvd_records[Epoch::Data].last_ack_sent,
+                        );
+                    }
                     if guard.loss_timer.is_timeout(now) {
                         guard.on_loss_timeout(now);
                     }
@@ -623,9 +649,10 @@ impl RcvdRecords {
             return largest_pn;
         }
 
+        let largest_ack_sent = self.last_ack_sent.map(|x| x.1).unwrap_or(0);
         let now = Instant::now();
         for (pn, rec_time) in self.rcvd_queue.iter() {
-            if now - *rec_time >= max_delay && pn > &self.last_ack_sent.map(|x| x.1).unwrap_or(0) {
+            if now - *rec_time >= max_delay && pn > &largest_ack_sent {
                 return largest_pn;
             }
         }

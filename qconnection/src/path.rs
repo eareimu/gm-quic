@@ -114,6 +114,7 @@ impl Path {
                     .poll_send(cx, pkts, self.pathway, self.socket.dst())
             })
             .await?;
+            tracing::info!("send {} packet", sent);
             pkts = &pkts[sent..];
         }
         Ok(())

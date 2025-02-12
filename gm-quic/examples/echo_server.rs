@@ -1,6 +1,7 @@
 use std::{io, net::SocketAddr, sync::Arc};
 
 use clap::Parser;
+use qbase::sid;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{info, info_span, Instrument};
 
@@ -50,6 +51,8 @@ pub async fn launch(server: Arc<gm_quic::QuicServer>) -> io::Result<()> {
     async fn handle_connection(conn: Arc<gm_quic::Connection>, from: SocketAddr) -> io::Result<()> {
         loop {
             let (sid, (reader, writer)) = conn.accept_bi_stream().await?.unwrap();
+            info!(?sid, "server connection {:p}", conn);
+
             tokio::spawn(
                 handle_stream(reader, writer).instrument(info_span!("handle_stream",%sid)),
             );

@@ -6,19 +6,19 @@ use qudp::{PacketHeader, UdpSocketController};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value_t = String::from("[::]:0"))]
+    #[arg(long, default_value_t = String::from("127.0.0.1:0"))]
     src: String,
 
-    #[arg(long, default_value_t = String::from("[::1]:12345"))]
+    #[arg(long, default_value_t = String::from("127.0.0.1:12345"))]
     dst: String,
 
     #[arg(long, default_value_t = 1200)]
     msg_size: usize,
 
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 1000)]
     msg_count: usize,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     gso: bool,
 }
 
@@ -43,10 +43,21 @@ async fn main() {
     };
 
     let payload = vec![8u8; args.msg_size];
-    let payloads = vec![IoSlice::new(&payload[..]); args.msg_count];
+    let batch = args.msg_count / 64;
+    for i in 0..batch {
+        let payloads = vec![IoSlice::new(&payload[..]); 64];
+        match socket.send(&payloads, send_hdr).await {
+            Ok(n) => log::info!("sent {} packets, dest: {}", n, dst),
+            Err(e) => log::error!("send failed: {}", e),
+        }
+    }
 
-    match socket.send(&payloads, send_hdr).await {
-        Ok(n) => log::info!("sent {} packets, dest: {}", n, dst),
-        Err(e) => log::error!("send failed: {}", e),
+    let last = args.msg_count % 64;
+    if last > 0 {
+        let payloads = vec![IoSlice::new(&payload[..]); last];
+        match socket.send(&payloads, send_hdr).await {
+            Ok(n) => log::info!("sent {} packets, dest: {}", n, dst),
+            Err(e) => log::error!("send failed: {}", e),
+        }
     }
 }
