@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, time::Instant};
 
+use tracing::info;
+
 use crate::congestion::{AckedPkt, Algorithm, MSS};
 
 // The upper bound for the initial window will be
@@ -83,6 +85,10 @@ impl Algorithm for NewReno {
 
         self.bytes_acked = (self.bytes_acked as f64 * LOSS_REDUCTION_FACTOR) as u64;
         self.ssthresh = self.cwnd;
+        info!(
+            "congestion event, update cwnd {} and ssthresh {}",
+            self.cwnd, self.ssthresh
+        );
     }
 
     fn cwnd(&self) -> u64 {

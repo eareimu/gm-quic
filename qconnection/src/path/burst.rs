@@ -178,11 +178,12 @@ impl Burst {
             if !segments.is_empty() {
                 tracing::info!(
                     packets = ?segments.iter().map(|seg| seg.len()).collect::<Vec<_>>(),
+                    pathway = ?self.path.pathway,
                     "send packets"
                 );
                 self.path.send_packets(&segments).await?;
             } else {
-                tracing::trace!(reason = "no data", "sending blocked");
+                tracing::info!(reason = "no data", "sending blocked");
                 tokio::select! {
                     _ = path_sendable.as_mut() => {},
                     _ = conn_sendable.as_mut() => {},

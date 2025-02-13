@@ -34,6 +34,10 @@ clap = { workspace = true }
 env_logger = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 
+[dev-dependencies.tracing-subscriber]
+workspace = true
+features = ["fmt", "ansi", "env-filter", "time", "tracing-log"]
+
 [[example]]
 name = "send"
 path = "examples/send.rs"

@@ -9,6 +9,7 @@ use std::{
 
 use socket2::{Domain, Socket, Type};
 use tokio::io::Interest;
+use tracing::info;
 
 const DEFAULT_TTL: libc::c_int = 64;
 
@@ -119,17 +120,23 @@ impl UdpSocketController {
         let f = || self.recvmsg(bufs, hdrs);
         let ret = self.io.try_io(Interest::READABLE, f);
         if matches!(&ret, Err(e) if e.kind() == io::ErrorKind::WouldBlock) {
+            info!("recv err would block");
             return Poll::Ready(Ok(0));
+        }
+        if ret.is_err() {
+            info!("other err {:?}", ret);
         }
         Poll::Ready(ret)
     }
 
     pub fn gso_size(&self) -> u16 {
-        self.gso_size.load(core::sync::atomic::Ordering::Acquire)
+        1
+        //self.gso_size.load(core::sync::atomic::Ordering::Acquire)
     }
 
     pub fn gro_size(&self) -> u16 {
-        self.gro_size.load(core::sync::atomic::Ordering::Acquire)
+        1
+        //self.gro_size.load(core::sync::atomic::Ordering::Acquire)
     }
 }
 

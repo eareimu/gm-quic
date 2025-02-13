@@ -10,8 +10,17 @@ struct Args {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::level_filters::LevelFilter::INFO)
+        // .with_max_level(tracing::level_filters::LevelFilter::TRACE)
+        // .with_writer(
+        //     std::fs::OpenOptions::new()
+        //         .create(true)
+        //         .write(true)
+        //         .truncate(true)
+        //         .open("/tmp/gm-quic.log")?,
+        // )
+        .with_ansi(false)
         .init();
 
     let args = Args::parse();

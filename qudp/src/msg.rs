@@ -121,6 +121,7 @@ impl Message {
             {
                 recv_hdrs[i].seg_size = hdr.msg_len as u16;
             }
+
             let hdr = msg_hdr!(hdr);
             let name = unsafe { self.names[i].assume_init() };
             let cmsg_iter = unsafe { Iter::new(hdr) };

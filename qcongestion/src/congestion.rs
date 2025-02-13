@@ -409,10 +409,12 @@ impl CongestionController {
                 if let Some(loss) = self.sent_packets[space].remove(i) {
                     let pn = loss.pn;
                     tracing::info!(
-                        "conection packet {} loss time {} packet threshold {}",
+                        "{} conection packet {} loss time {} packet threshold {} pacing rate {:?}",
+                        self.handshake.role(),
                         pn,
                         self.sent_packets[space][i].time_sent <= lost_send_time,
-                        largest_ack_index - i >= K_PACKET_THRESHOLD
+                        largest_ack_index - i >= K_PACKET_THRESHOLD,
+                        self.algorithm.pacing_rate(),
                     );
                     loss_pn.push(pn);
                     loss_packets.push(loss);
@@ -493,6 +495,7 @@ impl ArcCC {
 }
 
 impl super::CongestionControl for ArcCC {
+    #[tracing::instrument(skip(self, notify))]
     fn launch(&self, notify: Arc<Notify>) -> AbortHandle {
         let cc = self.clone();
         tokio::spawn(
@@ -506,16 +509,12 @@ impl super::CongestionControl for ArcCC {
                     let mut guard = cc.0.lock().unwrap();
                     if count % 100 == 0 {
                         tracing::info!(
-                            "{} cc loop count {} requires_ack {}",
+                            "{} cc loop count {} requires_ack {}  pacing rate {:?} send_quota {}",
                             guard.handshake.role(),
                             count,
-                            guard.requires_ack()
-                        );
-
-                        info!(
-                            "recv record {:?} last ack sent {:?}",
-                            guard.rcvd_records[Epoch::Data].rcvd_queue.back(),
-                            guard.rcvd_records[Epoch::Data].last_ack_sent,
+                            guard.requires_ack(),
+                            guard.algorithm.pacing_rate(),
+                            guard.send_quota(now),
                         );
                     }
                     if guard.loss_timer.is_timeout(now) {
@@ -526,13 +525,13 @@ impl super::CongestionControl for ArcCC {
                             guard.pending_burst.take().unwrap().0.wake();
                         }
                     }
+                    if now - guard.last_sent_time >= Duration::from_secs(1) {
+                        info!("{} try to send packet", guard.handshake.role());
+                        notify.notify_waiters();
+                    }
                     if guard.requires_ack() {
                         notify.notify_waiters();
                     }
-                    if count % 100 == 0 {
-                        tracing::trace!(send_quote = guard.send_quota(now));
-                    }
-                    count += 1;
                 }
             }
             .instrument(trace_span!("congestion_controller")),

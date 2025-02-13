@@ -235,10 +235,13 @@ impl Algorithm for Bbr {
     }
 
     fn on_congestion_event(&mut self, pk: &SentPkt, _: Instant) {
+        info!(
+            "bbr {:p} loss packet, inflight {} bytes, cwnd {}, loss total {}",
+            self, self.bytes_in_flight, self.cwnd, self.bytes_lost_in_total
+        );
         self.bytes_in_flight -= pk.size as u64;
         self.bytes_lost_in_total += pk.size as u64;
         self.newly_lost_bytes += pk.size as u64;
-        self.in_recovery = true;
     }
 
     fn cwnd(&self) -> u64 {

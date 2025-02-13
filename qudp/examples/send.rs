@@ -15,7 +15,7 @@ struct Args {
     #[arg(long, default_value_t = 1200)]
     msg_size: usize,
 
-    #[arg(long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 64)]
     msg_count: usize,
 
     #[arg(long, default_value_t = true)]
@@ -24,8 +24,17 @@ struct Args {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::level_filters::LevelFilter::INFO)
+        // .with_max_level(tracing::level_filters::LevelFilter::TRACE)
+        // .with_writer(
+        //     std::fs::OpenOptions::new()
+        //         .create(true)
+        //         .write(true)
+        //         .truncate(true)
+        //         .open("/tmp/gm-quic.log")?,
+        // )
+        .with_ansi(false)
         .init();
 
     let args = Args::parse();
@@ -43,9 +52,9 @@ async fn main() {
     };
 
     let payload = vec![8u8; args.msg_size];
-    let batch = args.msg_count / 64;
+    let batch = args.msg_count;
     for i in 0..batch {
-        let payloads = vec![IoSlice::new(&payload[..]); 64];
+        let payloads = vec![IoSlice::new(&payload[..]); 1];
         match socket.send(&payloads, send_hdr).await {
             Ok(n) => log::info!("sent {} packets, dest: {}", n, dst),
             Err(e) => log::error!("send failed: {}", e),

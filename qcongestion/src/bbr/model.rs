@@ -30,13 +30,15 @@ impl Bbr {
     pub(super) fn update_btlbw(&mut self, packet: &AckedPkt) {
         self.update_round(packet);
 
-        if self.delivery_rate.sample_delivery_rate() >= self.btlbw
+        if self.delivery_rate.sample_delivery_rate() > self.btlbw
             || !self.delivery_rate.sample_is_app_limited()
         {
             self.btlbw = self
                 .btlbwfilter
                 .update_max(self.round_count, self.delivery_rate.sample_delivery_rate());
-            tracing::trace!("bbr btlbw updated to {}", self.btlbw);
+            if self.delivery_rate.sample_delivery_rate() > self.btlbw {
+                tracing::info!("bbr {:p} btlbw updated to {}", self, self.btlbw);
+            }
         }
     }
 
@@ -51,6 +53,7 @@ impl Bbr {
         if !sample_rtt.is_zero() && (sample_rtt <= self.rtprop || self.is_rtprop_expired) {
             self.rtprop = sample_rtt;
             self.rtprop_stamp = now;
+            tracing::info!("bbr {:p} update rtprop to {:?}", self, self.rtprop);
         }
     }
 }

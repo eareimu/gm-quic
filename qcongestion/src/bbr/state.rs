@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use rand::Rng;
-use tracing::trace;
+use tracing::{info, trace};
 
 use super::{Bbr, BbrStateMachine, HIGH_GAIN, PROBE_RTT_DURATION};
-use crate::rtt::INITIAL_RTT;
+use crate::{congestion::Algorithm, rtt::INITIAL_RTT};
 
 // BBRGainCycleLen: the number of phases in the BBR ProbeBW gain cycle: 8.
 const GAIN_CYCLE_LEN: usize = 8;
@@ -49,11 +49,9 @@ impl Bbr {
             return;
         }
 
-        trace!(
-            "check_full_pipe, btlbw={}, full_bw={}, full_bw_count={}",
-            self.btlbw,
-            self.full_bw,
-            self.full_bw_count
+        info!(
+            "bbr {:p }check_full_pipe, btlbw={}, full_bw={}, full_bw_count={}",
+            self, self.btlbw, self.full_bw, self.full_bw_count
         );
         // BBR.BtlBw still growing?
         if self.btlbw as f64 >= self.full_bw as f64 * 1.25 {
@@ -70,7 +68,12 @@ impl Bbr {
 
     // 4.3.3.  Drain
     fn enter_drain(&mut self) {
-        trace!("enter_drain");
+        info!(
+            "bbr {:p} enter_drain inflight {} bdp {}",
+            self,
+            self.bytes_in_flight,
+            self.inflight(1.0)
+        );
         self.state = BbrStateMachine::Drain;
         self.pacing_gain = 1.0 / HIGH_GAIN; // pace slowly
         self.cwnd_gain = HIGH_GAIN; // maintain cwnd
@@ -87,7 +90,7 @@ impl Bbr {
 
     // 4.3.4.  ProbeBW
     pub fn enter_probe_bw(&mut self) {
-        trace!("enter_probe_bw");
+        trace!("bbr {:p} enter_probe_bw", self);
         self.state = BbrStateMachine::ProbeBW;
         self.pacing_gain = 1.0;
         self.cwnd_gain = 2.0;
@@ -106,10 +109,17 @@ impl Bbr {
     }
 
     fn advance_cycle_phase(&mut self) {
-        trace!("advance_cycle_phase: cycle_index={}", self.cycle_index);
         self.cycle_stamp = Instant::now();
         self.cycle_index = (self.cycle_index + 1) % GAIN_CYCLE_LEN;
         self.pacing_gain = PACING_GAIN_CYCLE[self.cycle_index];
+        info!(
+            "bbr {:p} advance_cycle_phase: gain={} pcaing rate={:.2} inflight={} bdp {}",
+            self,
+            self.cycle_index,
+            PACING_GAIN_CYCLE[self.cycle_index],
+            self.bytes_in_flight,
+            self.inflight(1.0),
+        );
     }
 
     // 是否要进入下一阶段

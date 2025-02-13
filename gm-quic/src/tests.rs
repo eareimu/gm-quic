@@ -57,7 +57,7 @@ async fn parallel_stream() -> io::Result<()> {
             include_bytes!("../examples/keychain/localhost/server.key"),
         )
         .with_parameters(server_stream_unlimited_parameters())
-        .listen("0.0.0.0:0")?;
+        .listen("0.0.0.0:12345")?;
 
     let mut server_addr = server.addresses().into_iter().next().unwrap();
     server_addr.set_ip(std::net::Ipv4Addr::LOCALHOST.into());
@@ -72,6 +72,7 @@ async fn parallel_stream() -> io::Result<()> {
         crate::QuicClient::builder()
             .with_root_certificates(roots)
             .without_cert()
+            .with_keylog(true)
             .with_parameters(client_stream_unlimited_parameters())
             .build(),
     );
