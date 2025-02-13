@@ -89,7 +89,7 @@ impl Burst {
         std::panic::set_hook(Box::new(move |panic_info| {
             let location = panic_info.location().unwrap();
             let backtrace = std::backtrace::Backtrace::force_capture();
-            tracing::trace!(%backtrace, %location, "panic");
+            tracing::info!(%backtrace, %location, "panic");
         }));
 
         let reversed_size = self.path.interface.reversed_bytes(self.path.pathway)?;
@@ -176,14 +176,14 @@ impl Burst {
             let buffers = self.load_into_buffers(buffers, transcation)?;
             let segments = self.collect_filled_buffers(buffers)?;
             if !segments.is_empty() {
-                tracing::info!(
-                    packets = ?segments.iter().map(|seg| seg.len()).collect::<Vec<_>>(),
-                    pathway = ?self.path.pathway,
-                    "send packets"
-                );
+                // tracing::info!(
+                //     packets = ?segments.iter().map(|seg| seg.len()).collect::<Vec<_>>(),
+                //     pathway = ?self.path.pathway,
+                //     "send packets"
+                // );
                 self.path.send_packets(&segments).await?;
             } else {
-                tracing::info!(reason = "no data", "sending blocked");
+                tracing::info!(pathway = ?self.path.pathway, reason = "no data", "sending blocked");
                 tokio::select! {
                     _ = path_sendable.as_mut() => {},
                     _ = conn_sendable.as_mut() => {},

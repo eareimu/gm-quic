@@ -79,7 +79,7 @@ impl<'b, 's, F> PacketMemory<'b, 's, F> {
 
 impl<F> PacketMemory<'_, '_, F> {
     pub fn dump_ack_frame(&mut self, frame: AckFrame) {
-        tracing::trace!(?frame, pn = self.guard.pn().0, "dump frame");
+        tracing::info!(?frame, pn = self.guard.pn().0, "dump frame");
         self.writer.dump_frame(frame);
         self.guard.record_trivial();
     }
@@ -170,7 +170,7 @@ where
         self.writer
             .dump_frame_with_data(frame, data)
             .and_then(|frame| {
-                tracing::trace!(?frame, pn = self.guard.pn().0, "dump frame");
+                tracing::info!(?frame, pn = self.guard.pn().0, "dump frame");
                 self.guard.record_frame(GuaranteedFrame::Stream(frame));
                 None
             })

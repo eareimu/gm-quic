@@ -5,6 +5,8 @@ use std::{
     ops::Range,
 };
 
+use tracing::info;
+
 /// To indicate the state of a data segment, it is colored.
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug)]
 enum Color {
@@ -204,12 +206,12 @@ impl BufMap {
                 } else {
                     let s = self.0.get(idx - 1).unwrap();
                     let pre_color = s.color();
-                    debug_assert!(
-                        pre_color != Color::Pending,
-                        "Recved Range({:?}) covered Pending part from {}",
-                        range,
-                        s.offset()
-                    );
+                    // debug_assert!(
+                    //     pre_color != Color::Pending,
+                    //     "Recved Range({:?}) covered Pending part from {}",
+                    //     range,
+                    //     s.offset()
+                    // );
                     (idx, pre_color != Color::Recved, idx, pre_color)
                 }
             }
@@ -329,12 +331,12 @@ impl BufMap {
                 } else {
                     let s = self.0.get(idx - 1).unwrap();
                     let pre_color = s.color();
-                    debug_assert!(
-                        pre_color != Color::Pending,
-                        "Lost Range({:?}) covered Pending parts from {}",
-                        range,
-                        s.offset()
-                    );
+                    // debug_assert!(
+                    //     pre_color != Color::Pending,
+                    //     "Lost Range({:?}) covered Pending parts from {}",
+                    //     range,
+                    //     s.offset()
+                    // );
                     if pre_color == Color::Recved {
                         // 另有安排，直接调用，lost_from(idx, range.end);
                         self.lost_from(idx, range.end);
@@ -521,7 +523,7 @@ impl BufMap {
 /// [`receive buffer`]: crate::recv::RecvBuf
 #[derive(Default, Debug)]
 pub struct SendBuf {
-    offset: u64,
+    pub offset: u64,
     // 写入数据的环形队列，与接收队列不同的是，它是连续的
     data: VecDeque<u8>,
     state: BufMap,

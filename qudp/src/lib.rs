@@ -120,7 +120,6 @@ impl UdpSocketController {
         let f = || self.recvmsg(bufs, hdrs);
         let ret = self.io.try_io(Interest::READABLE, f);
         if matches!(&ret, Err(e) if e.kind() == io::ErrorKind::WouldBlock) {
-            info!("recv err would block");
             return Poll::Ready(Ok(0));
         }
         if ret.is_err() {

@@ -22,7 +22,7 @@ use super::sndbuf::SendBuf;
 #[derive(Debug)]
 pub struct ReadySender<TX> {
     stream_id: StreamId,
-    sndbuf: SendBuf,
+    pub sndbuf: SendBuf,
     flush_waker: Option<Waker>,
     shutdown_waker: Option<Waker>,
     broker: TX,
@@ -162,7 +162,7 @@ impl<TX: Clone> From<&mut ReadySender<TX>> for DataSentSender<TX> {
 #[derive(Debug)]
 pub struct SendingSender<TX> {
     stream_id: StreamId,
-    sndbuf: SendBuf,
+    pub sndbuf: SendBuf,
     flush_waker: Option<Waker>,
     shutdown_waker: Option<Waker>,
     broker: TX,
@@ -304,7 +304,7 @@ enum FinState {
 #[derive(Debug)]
 pub struct DataSentSender<TX> {
     stream_id: StreamId,
-    sndbuf: SendBuf,
+    pub sndbuf: SendBuf,
     flush_waker: Option<Waker>,
     shutdown_waker: Option<Waker>,
     broker: TX,

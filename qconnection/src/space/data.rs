@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{f32::INFINITY, sync::Arc};
 
 use bytes::BufMut;
 use futures::{Stream, StreamExt};
@@ -38,7 +38,7 @@ use qrecovery::{
 #[cfg(feature = "unreliable")]
 use qunreliable::DatagramFlow;
 use tokio::sync::{mpsc, Notify};
-use tracing::{trace_span, Instrument};
+use tracing::{info, trace_span, Instrument};
 
 use super::DecryptedPacket;
 use crate::{
@@ -202,6 +202,7 @@ impl DataSpace {
 
         let mut ack = None;
         if let Some((largest, rcvd_time)) = tx.need_ack(Epoch::Data) {
+            info!("need ack {:?}", largest);
             let rcvd_journal = self.journal.of_rcvd_packets();
             if let Some(ack_frame) =
                 rcvd_journal.gen_ack_frame_util(largest, rcvd_time, packet.remaining_mut())

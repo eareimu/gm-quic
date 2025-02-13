@@ -79,7 +79,7 @@ async fn parallel_stream() -> io::Result<()> {
 
     const CONNECTIONS: usize = 1;
     const STREAMS: usize = 1;
-    const DATA: &[u8] = include_bytes!("./日志7.log");
+    const DATA: &[u8] = include_bytes!("../../log.log");
 
     let mut connections = JoinSet::new();
 
@@ -95,7 +95,7 @@ async fn parallel_stream() -> io::Result<()> {
 
                     writer.write_all(DATA).await?;
                     writer.shutdown().await?;
-                    debug!(%stream_id, "sender shutdowned, wait for server to echo");
+                    info!(%stream_id, "sender shutdowned, wait for server to echo");
 
                     let mut data = Vec::new();
                     reader.read_to_end(&mut data).await?;

@@ -10,6 +10,7 @@ use qbase::{
     varint::{VarInt, VARINT_MAX},
 };
 use thiserror::Error;
+use tracing::info;
 
 /// Packet有收到/没收到2种状态，状态也有有效/失活2种状态，失活的可以滑走
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,6 +210,11 @@ impl RcvdJournal {
 
     fn slide_retired(&mut self) {
         let n = self.queue.iter().take_while(|s| !s.is_active).count();
+        info!(
+            "retire from {} to {}",
+            self.queue.offset(),
+            self.queue.offset() + n as u64
+        );
         self.queue.advance(n)
     }
 }

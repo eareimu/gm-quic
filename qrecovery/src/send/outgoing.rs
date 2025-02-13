@@ -9,6 +9,7 @@ use qbase::{
     util::DescribeData,
     varint::{VarInt, VARINT_MAX},
 };
+use tracing::info;
 
 use super::sender::{ArcSender, DataSentSender, Sender, SendingSender};
 
@@ -40,6 +41,10 @@ impl<TX: Clone> Outgoing<TX> {
     {
         let origin_len = packet.remaining_mut();
         let write = |(offset, is_fresh, data, is_eos): (u64, bool, (&[u8], &[u8]), bool)| {
+            info!("new frame offset={} len={}", offset, data.len());
+            if data.len() == 0 {
+                info!("break, no data to write");
+            }
             let mut frame = StreamFrame::new(sid, offset, data.len());
 
             frame.set_eos_flag(is_eos);

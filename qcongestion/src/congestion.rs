@@ -509,10 +509,11 @@ impl super::CongestionControl for ArcCC {
                     let mut guard = cc.0.lock().unwrap();
                     if count % 100 == 0 {
                         tracing::info!(
-                            "{} cc loop count {} requires_ack {}  pacing rate {:?} send_quota {}",
+                            "{} cc loop count {} requires_ack {} {:?}  pacing rate {:?} send_quota {}",
                             guard.handshake.role(),
                             count,
                             guard.requires_ack(),
+                            guard.rcvd_records[Epoch::Data].requires_ack(guard.max_ack_delay),
                             guard.algorithm.pacing_rate(),
                             guard.send_quota(now),
                         );
@@ -524,10 +525,6 @@ impl super::CongestionControl for ArcCC {
                         if guard.send_quota(now) >= expect_quota {
                             guard.pending_burst.take().unwrap().0.wake();
                         }
-                    }
-                    if now - guard.last_sent_time >= Duration::from_secs(1) {
-                        info!("{} try to send packet", guard.handshake.role());
-                        notify.notify_waiters();
                     }
                     if guard.requires_ack() {
                         notify.notify_waiters();
@@ -668,7 +665,7 @@ impl RcvdRecords {
 
     /// Processes an acknowledged (ACK) packet.
     /// If the ACKed packet number matches the last sent ACK number, retires all acknowledged packets.
-    #[tracing::instrument(level = "trace", skip(trackers))]
+    #[tracing::instrument(level = "info", skip(trackers, self))]
     fn ack(&mut self, ack: u64, trackers: &[Arc<dyn TrackPackets>; 3]) {
         let largest_acked = match self.last_ack_sent {
             Some((pn, ref largest_acked)) if ack == pn => largest_acked,
@@ -677,6 +674,7 @@ impl RcvdRecords {
 
         let begin = self.rcvd_queue.front().map(|&(pn, _)| pn).unwrap_or(0);
         let mut retire = begin..=*largest_acked;
+        info!("retire to {:?}", retire);
         trackers[self.epoch].retire(&mut retire);
         self.rcvd_queue.retain(|&(pn, _)| pn > *largest_acked);
     }
