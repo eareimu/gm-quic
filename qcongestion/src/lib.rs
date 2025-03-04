@@ -62,6 +62,10 @@ pub trait CongestionControl {
     /// # Returns
     /// The current PTO duration for the given epoch.
     fn pto_time(&self, epoch: Epoch) -> Duration;
+
+    /// Stops the congestion control algorithm.
+    /// mark all inflights as lost
+    fn stop(&self);
 }
 
 /// The [`TrackPackets`] trait defines the interface for packet tracking
@@ -71,10 +75,11 @@ pub trait TrackPackets: Send + Sync {
     /// - `pn`: The packet number of the potentially lost packet.
     fn may_loss(&self, trigger: PacketLostTrigger, pns: &mut dyn Iterator<Item = u64>);
 
-    /// Retires a packet record with the specified packet number in recv buffer.
+    /// Attempts to roll the receive packet record to the specified packet number in the provided pathway.
     /// # Parameters
-    /// - `pn`: The packet number of the packet record to retire.
-    fn rotate_to(&self, pathway: Pathway, pn: u64);
+    /// - `pathway`: The identifier of the pathway where the packet record is updated.
+    /// - `pn`: The target packet number to which the packet record should be advanced.
+    fn rotate_to(&self, pathway: Pathway, pn: Option<u64>);
 }
 
 /// The [`ObserveHandshake`] trait defines the interface for observing the handshake state.

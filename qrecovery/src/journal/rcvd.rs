@@ -54,11 +54,11 @@ struct Rotation {
 }
 
 impl Rotation {
-    fn rotate_to(&mut self, pathway: &Pathway, largest_pn: u64) -> u64 {
-        self.paths_largest_pn.insert(*pathway, largest_pn);
-        if largest_pn == u64::MAX {
-            self.paths_largest_pn.remove(pathway);
-        }
+    fn rotate_to(&mut self, pathway: &Pathway, largest_pn: Option<u64>) -> u64 {
+        match largest_pn {
+            Some(largest_pn) => self.paths_largest_pn.insert(*pathway, largest_pn),
+            None => self.paths_largest_pn.remove(pathway),
+        };
         self.paths_largest_pn.values().min().copied().unwrap_or(0)
     }
 }
@@ -208,7 +208,7 @@ impl RcvdJournal {
         Some(buf_len - buf.len())
     }
 
-    fn rotate_to(&mut self, pathway: &Pathway, largest_pn: u64) {
+    fn rotate_to(&mut self, pathway: &Pathway, largest_pn: Option<u64>) {
         let min_pn = self.rotation.rotate_to(pathway, largest_pn);
         let n = min_pn.saturating_sub(self.queue.offset()) as usize;
         self.queue.advance(n)
@@ -292,7 +292,7 @@ impl ArcRcvdJournal {
             .read_ack_frame_util(buf, largest, recv_time)
     }
 
-    pub fn rotate_to(&self, pathway: Pathway, largest_pn: u64) {
+    pub fn rotate_to(&self, pathway: Pathway, largest_pn: Option<u64>) {
         self.inner.write().unwrap().rotate_to(&pathway, largest_pn);
     }
 }
@@ -330,17 +330,20 @@ mod tests {
         );
         assert_eq!(records.decode_pn(PacketNumber::encode(30, 0)), Ok(30));
         records.register_pn(30);
-        records.rotate_to(pathway1, 20);
+        records.rotate_to(pathway1, Some(20));
         assert_eq!(records.inner.read().unwrap().queue.len(), 11);
 
-        records.rotate_to(pathway2, 10);
+        records.rotate_to(pathway2, Some(10));
         assert_eq!(records.inner.read().unwrap().queue.len(), 11);
 
-        records.rotate_to(pathway2, 25);
+        records.rotate_to(pathway2, Some(25));
         assert_eq!(records.inner.read().unwrap().queue.len(), 11);
 
-        records.rotate_to(pathway1, 23);
+        records.rotate_to(pathway1, Some(23));
         assert_eq!(records.inner.read().unwrap().queue.len(), 8);
+
+        records.rotate_to(pathway1, None);
+        assert_eq!(records.inner.read().unwrap().queue.len(), 6);
         assert_eq!(
             records.decode_pn(PacketNumber::encode(9, 0)),
             Err(InvalidPacketNumber::TooOld)

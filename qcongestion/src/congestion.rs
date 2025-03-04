@@ -223,8 +223,8 @@ impl CongestionController {
                     .binary_search_by_key(&pn, |p| p.pn)
                     .ok()
                     .map(|idx| {
-                        if let Some(roate) = self.rcvd_records[epoch].ack(pn) {
-                            self.trackers[epoch].rotate_to(self.pathway, roate);
+                        if let Some(pn_roate_to) = self.rcvd_records[epoch].ack(pn) {
+                            self.trackers[epoch].rotate_to(self.pathway, Some(pn_roate_to));
                         }
                         self.sent_packets[epoch][idx].is_acked = true;
                         self.sent_packets[epoch][idx].clone().into()
@@ -554,7 +554,7 @@ impl super::CongestionControl for ArcCC {
             // send ack for the first time
             if record.last_ack_sent.is_none() {
                 let begin = record.rcvd_queue.front().map(|&(pn, _)| pn).unwrap_or(0);
-                guard.trackers[epoch].rotate_to(guard.pathway, begin);
+                guard.trackers[epoch].rotate_to(guard.pathway, Some(begin));
             }
             guard.rcvd_records[epoch].on_ack_sent(pn, largest_acked);
         }
@@ -578,6 +578,21 @@ impl super::CongestionControl for ArcCC {
 
     fn pto_time(&self, epoch: Epoch) -> Duration {
         self.0.lock().unwrap().get_pto_time(epoch)
+    }
+
+    fn stop(&self) {
+        let guard = self.0.lock().unwrap();
+        for epoch in &[Epoch::Initial, Epoch::Handshake, Epoch::Data] {
+            // mark all inflights as lost
+            let loss_pns = guard.sent_packets[*epoch]
+                .iter()
+                .filter(|&pkt| (!pkt.is_acked))
+                .map(|pkt| pkt.pn);
+            guard.trackers[*epoch]
+                .may_loss(PacketLostTrigger::PtoExpired, &mut loss_pns.into_iter());
+            // remove from rcvd records
+            guard.trackers[*epoch].rotate_to(guard.pathway, None);
+        }
     }
 }
 
@@ -651,7 +666,6 @@ impl RcvdRecords {
     /// Called when an ACK is sent.
     /// Updates the last ACK sent information and resets the `need_ack` flag.
     fn on_ack_sent(&mut self, pn: u64, largest_acked: u64) {
-        // send ack for the first time
         self.ack_sent.insert(pn, largest_acked);
         self.last_ack_sent = Some((pn, largest_acked));
         self.ack_immedietly = false;
@@ -1064,7 +1078,7 @@ mod tests {
         // ack 2，对面可能判定 4 为丢包，retire pn <= 10 - 3
         ack_reocrd.ack(2);
 
-        assert_eq!(ack_reocrd.requires_ack(max_ack_delay), None);
+        assert_eq!(ack_reocrd.requires_ack(max_ack_delay).unwrap().0, 10);
         assert_eq!(
             ack_reocrd
                 .rcvd_queue
@@ -1077,7 +1091,7 @@ mod tests {
     struct Mock;
     impl TrackPackets for Mock {
         fn may_loss(&self, _: PacketLostTrigger, _: &mut dyn Iterator<Item = u64>) {}
-        fn rotate_to(&self, _: Pathway, _: u64) {}
+        fn rotate_to(&self, _: Pathway, _: Option<u64>) {}
     }
 
     fn create_congestion_controller_for_test() -> CongestionController {
