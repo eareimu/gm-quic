@@ -1,3 +1,4 @@
+#![allow(unused)]
 mod echo_server {
     use crate as gm_quic;
     include!("../examples/echo_server.rs");
@@ -34,14 +35,14 @@ use tracing::{debug, error, info, info_span};
 use crate::ToCertificate;
 
 static LOGGER: LazyLock<Arc<dyn Log + Send + Sync>> = LazyLock::new(|| {
-    // Arc::new(DefaultSeqLogger::new(std::path::PathBuf::from("/tmp")))
+    // Arc::new(DefaultSeqLogger::new(std::path::PathBuf::from(r"/tmp")))
     Arc::new(NullLogger)
 });
 
 #[tokio::test]
 async fn set() -> io::Result<()> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::level_filters::LevelFilter::INFO)
+        .with_max_level(tracing::level_filters::LevelFilter::TRACE)
         // .with_max_level(tracing::level_filters::LevelFilter::TRACE)
         // .with_writer(
         //     std::fs::OpenOptions::new()
@@ -53,9 +54,9 @@ async fn set() -> io::Result<()> {
         // .with_ansi(false)
         .init();
 
-    disable_keep_alive().await;
-    enable_keep_alive().await;
-    parallel_stream().await?;
+    // disable_keep_alive().await;
+    // enable_keep_alive().await;
+    // parallel_stream().await?;
     limited_streams().await?;
 
     Ok(())
@@ -153,6 +154,7 @@ async fn parallel_stream() -> io::Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 async fn limited_streams() -> io::Result<()> {
     fn client_stream_limited_parameters() -> crate::ClientParameters {
         let mut params = crate::ClientParameters::default();
@@ -211,7 +213,7 @@ async fn limited_streams() -> io::Result<()> {
     const STREAMS: usize = 4;
     const DATA: &[u8] = include_bytes!("tests.rs");
 
-    let connection = info_span!("client").in_scope(|| client.connect("localhost", server_addr))?;
+    let connection = client.connect("localhost", server_addr)?;
     let mut streams = JoinSet::new();
 
     for stream_idx in 0..STREAMS {
