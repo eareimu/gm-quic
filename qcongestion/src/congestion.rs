@@ -10,10 +10,11 @@ use qbase::{
     Epoch,
     frame::{AckFrame, EcnCounts, HandshakeDoneFrame, SendFrame},
     handshake::Handshake,
+    net::DataWaker,
     sid::Role,
 };
 use qlog::{quic::recovery::PacketLostTrigger, telemetry::Instrument};
-use tokio::{sync::Notify, task::AbortHandle};
+use tokio::task::AbortHandle;
 use tracing::Instrument as _;
 
 // todo: remove this in future
@@ -483,7 +484,7 @@ impl ArcCC {
 }
 
 impl super::CongestionControl for ArcCC {
-    fn launch(&self, notify: Arc<Notify>) -> AbortHandle {
+    fn launch(&self, data_waker: DataWaker) -> AbortHandle {
         let cc = self.clone();
         tokio::spawn(
             async move {
@@ -501,7 +502,7 @@ impl super::CongestionControl for ArcCC {
                         }
                     }
                     if guard.requires_ack() {
-                        notify.notify_waiters();
+                        data_waker.wake();
                     }
                 }
             }
@@ -1059,7 +1060,7 @@ mod tests {
     }
 
     fn create_congestion_controller_for_test() -> CongestionController {
-        let output = ArcReliableFrameDeque::with_capacity(10);
+        let output = ArcReliableFrameDeque::with_capacity_and_wakers(10, Default::default());
         CongestionController::new(
             CongestionAlgorithm::Bbr,
             Duration::from_millis(100),

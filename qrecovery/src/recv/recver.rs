@@ -228,13 +228,13 @@ impl<TX> SizeKnown<TX> {
                 ),
             ));
         }
-        self.rcvbuf.recv(data_start, data);
+        let fresh = self.rcvbuf.recv(data_start, data);
         if self.rcvbuf.is_readable() {
             if let Some(waker) = self.read_waker.take() {
                 waker.wake()
             }
         }
-        Ok(0)
+        Ok(fresh as usize)
     }
 
     pub(super) fn is_all_rcvd(&self) -> bool {
